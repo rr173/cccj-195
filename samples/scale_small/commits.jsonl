@@ -1,0 +1,60 @@
+{"txn_id": "T0", "commit_pos": 1, "writes": [{"key": 10, "version_id": "v1k10", "predecessor": "i10", "value": 568083}]}
+{"txn_id": "T1", "commit_pos": 2, "writes": [{"key": 15, "version_id": "v2k15", "predecessor": "i15", "value": 895424}]}
+{"txn_id": "T2", "commit_pos": 3, "writes": [{"key": 0, "version_id": "v3k0", "predecessor": "i0", "value": 308168}]}
+{"txn_id": "T3", "commit_pos": 4, "writes": [{"key": 24, "version_id": "v4k24", "predecessor": "i24", "value": 47124}]}
+{"txn_id": "T4", "commit_pos": 5, "writes": [{"key": 1, "version_id": "v5k1", "predecessor": "i1", "value": 324713}]}
+{"txn_id": "T5", "commit_pos": 6, "writes": [{"key": 6, "version_id": "v6k6", "predecessor": "i6", "value": 427753}]}
+{"txn_id": "T6", "commit_pos": 7, "writes": [{"key": 10, "version_id": "v7k10", "predecessor": "v1k10", "value": 377694}]}
+{"txn_id": "T7", "commit_pos": 8, "writes": [{"key": 20, "version_id": "v8k20", "predecessor": "i20", "value": 908940}]}
+{"txn_id": "T8", "commit_pos": 9, "writes": [{"key": 7, "version_id": "v9k7", "predecessor": "i7", "value": 981925}]}
+{"txn_id": "T9", "commit_pos": 10, "writes": [{"key": 10, "version_id": "v10k10", "predecessor": "v7k10", "value": 12015}]}
+{"txn_id": "T10", "commit_pos": 11, "writes": [{"key": 21, "version_id": "v11k21", "predecessor": "i21", "value": 394807}, {"key": 4, "version_id": "v11k4", "predecessor": "i4", "value": 62999}]}
+{"txn_id": "T11", "commit_pos": 12, "writes": [{"key": 22, "version_id": "v12k22", "predecessor": "i22", "value": 292474}]}
+{"txn_id": "T12", "commit_pos": 13, "writes": [{"key": 11, "version_id": "v13k11", "predecessor": "i11", "value": 263321}]}
+{"txn_id": "T13", "commit_pos": 14, "writes": [{"key": 11, "version_id": "v14k11", "predecessor": "v13k11", "value": 194245}]}
+{"txn_id": "T14", "commit_pos": 15, "writes": [{"key": 12, "version_id": "v15k12", "predecessor": "i12", "value": 109966}]}
+{"txn_id": "T15", "commit_pos": 16, "writes": [{"key": 8, "version_id": "v16k8", "predecessor": "i8", "value": 250291}]}
+{"txn_id": "T16", "commit_pos": 17, "writes": [{"key": 3, "version_id": "v17k3", "predecessor": "i3", "value": 629905}]}
+{"txn_id": "T17", "commit_pos": 18, "writes": [{"key": 18, "version_id": "v18k18", "predecessor": "i18", "value": 459728}, {"key": 23, "version_id": "v18k23", "predecessor": "i23", "value": 681819}]}
+{"txn_id": "T18", "commit_pos": 19, "writes": [{"key": 16, "version_id": "v19k16", "predecessor": "i16", "value": 200073}]}
+{"txn_id": "T19", "commit_pos": 20, "writes": [{"key": 19, "version_id": "v20k19", "predecessor": "i19", "value": 362056}]}
+{"txn_id": "T20", "commit_pos": 21, "writes": [{"key": 11, "version_id": "v21k11", "predecessor": "v14k11", "value": 664986}]}
+{"txn_id": "T21", "commit_pos": 22, "writes": [{"key": 7, "version_id": "v22k7", "predecessor": "v9k7", "value": 595940}, {"key": 4, "version_id": "v22k4", "predecessor": "v11k4", "value": 209266}]}
+{"txn_id": "T22", "commit_pos": 23, "writes": [{"key": 0, "version_id": "v23k0", "predecessor": "v3k0", "value": 534922}, {"key": 7, "version_id": "v23k7", "predecessor": "v22k7", "value": 33889}]}
+{"txn_id": "T23", "commit_pos": 24, "writes": [{"key": 18, "version_id": "v24k18", "predecessor": "v18k18", "value": 300954}]}
+{"txn_id": "T24", "commit_pos": 25, "writes": [{"key": 6, "version_id": "v25k6", "predecessor": "v6k6", "value": 940119}]}
+{"txn_id": "T25", "commit_pos": 26, "writes": [{"key": 5, "version_id": "v26k5", "predecessor": "i5", "value": 527630}]}
+{"txn_id": "T26", "commit_pos": 27, "writes": [{"key": 19, "version_id": "v27k19", "predecessor": "v20k19", "value": 20810}, {"key": 1, "version_id": "v27k1", "predecessor": "v5k1", "value": 984658}]}
+{"txn_id": "T27", "commit_pos": 28, "writes": [{"key": 1, "version_id": "v28k1", "predecessor": "v27k1", "value": 368933}]}
+{"txn_id": "T28", "commit_pos": 29, "writes": [{"key": 10, "version_id": "v29k10", "predecessor": "v10k10", "value": 560608}, {"key": 8, "version_id": "v29k8", "predecessor": "v16k8", "value": 966543}]}
+{"txn_id": "T29", "commit_pos": 30, "writes": [{"key": 1, "version_id": "v30k1", "predecessor": "v28k1", "value": 793237}]}
+{"txn_id": "T30", "commit_pos": 31, "writes": [{"key": 13, "version_id": "v31k13", "predecessor": "i13", "value": 53449}]}
+{"txn_id": "T31", "commit_pos": 32, "writes": [{"key": 1, "version_id": "v32k1", "predecessor": "v30k1", "value": 130681}]}
+{"txn_id": "T32", "commit_pos": 33, "writes": [{"key": 16, "version_id": "v33k16", "predecessor": "v19k16", "value": 526511}]}
+{"txn_id": "T33", "commit_pos": 34, "writes": [{"key": 12, "version_id": "v34k12", "predecessor": "v15k12", "value": 678339}]}
+{"txn_id": "T34", "commit_pos": 35, "writes": [{"key": 13, "version_id": "v35k13", "predecessor": "v31k13", "value": 129767}]}
+{"txn_id": "T35", "commit_pos": 36, "writes": [{"key": 1, "version_id": "v36k1", "predecessor": "v32k1", "value": 391407}]}
+{"txn_id": "T36", "commit_pos": 37, "writes": [{"key": 11, "version_id": "v37k11", "predecessor": "v21k11", "value": 657924}]}
+{"txn_id": "T37", "commit_pos": 38, "writes": [{"key": 0, "version_id": "v38k0", "predecessor": "v23k0", "value": 256989}]}
+{"txn_id": "T38", "commit_pos": 39, "writes": [{"key": 13, "version_id": "v39k13", "predecessor": "v35k13", "value": 136699}]}
+{"txn_id": "T39", "commit_pos": 40, "writes": [{"key": 21, "version_id": "v40k21", "predecessor": "v11k21", "value": 941469}, {"key": 14, "version_id": "v40k14", "predecessor": "i14", "value": 724100}]}
+{"txn_id": "T40", "commit_pos": 41, "writes": [{"key": 17, "version_id": "v41k17", "predecessor": "i17", "value": 108144}]}
+{"txn_id": "T41", "commit_pos": 42, "writes": [{"key": 1, "version_id": "v42k1", "predecessor": "v36k1", "value": 552816}]}
+{"txn_id": "T42", "commit_pos": 43, "writes": [{"key": 10, "version_id": "v43k10", "predecessor": "v29k10", "value": 882415}]}
+{"txn_id": "T43", "commit_pos": 44, "writes": [{"key": 9, "version_id": "v44k9", "predecessor": "i9", "value": 607206}]}
+{"txn_id": "T44", "commit_pos": 45, "writes": [{"key": 16, "version_id": "v45k16", "predecessor": "v33k16", "value": 749898}]}
+{"txn_id": "T45", "commit_pos": 46, "writes": [{"key": 1, "version_id": "v46k1", "predecessor": "v42k1", "value": 576841}]}
+{"txn_id": "T46", "commit_pos": 47, "writes": [{"key": 7, "version_id": "v47k7", "predecessor": "v23k7", "value": 476202}]}
+{"txn_id": "T47", "commit_pos": 48, "writes": [{"key": 17, "version_id": "v48k17", "predecessor": "v41k17", "value": 438533}]}
+{"txn_id": "T48", "commit_pos": 49, "writes": [{"key": 5, "version_id": "v49k5", "predecessor": "v26k5", "value": 435444}]}
+{"txn_id": "T49", "commit_pos": 50, "writes": [{"key": 3, "version_id": "v50k3", "predecessor": "v17k3", "value": 522148}]}
+{"txn_id": "T50", "commit_pos": 51, "writes": [{"key": 8, "version_id": "v51k8", "predecessor": "v29k8", "value": 788585}]}
+{"txn_id": "T51", "commit_pos": 52, "writes": [{"key": 22, "version_id": "v52k22", "predecessor": "v12k22", "value": 564171}]}
+{"txn_id": "T52", "commit_pos": 53, "writes": [{"key": 6, "version_id": "v53k6", "predecessor": "v25k6", "value": 322152}]}
+{"txn_id": "T53", "commit_pos": 54, "writes": [{"key": 18, "version_id": "v54k18", "predecessor": "v24k18", "value": 377981}]}
+{"txn_id": "T54", "commit_pos": 55, "writes": [{"key": 22, "version_id": "v55k22", "predecessor": "v52k22", "value": 502887}]}
+{"txn_id": "T55", "commit_pos": 56, "writes": [{"key": 8, "version_id": "v56k8", "predecessor": "v51k8", "value": 875154}, {"key": 15, "version_id": "v56k15", "predecessor": "v2k15", "value": 755719}]}
+{"txn_id": "T56", "commit_pos": 57, "writes": [{"key": 7, "version_id": "v57k7", "predecessor": "v47k7", "value": 934270}]}
+{"txn_id": "T57", "commit_pos": 58, "writes": [{"key": 24, "version_id": "v58k24", "predecessor": "v4k24", "value": 271186}]}
+{"txn_id": "T58", "commit_pos": 59, "writes": [{"key": 8, "version_id": "v59k8", "predecessor": "v56k8", "value": 177954}]}
+{"txn_id": "T59", "commit_pos": 60, "writes": [{"key": 2, "version_id": "v60k2", "predecessor": "i2", "value": 123698}]}

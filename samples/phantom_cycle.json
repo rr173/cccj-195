@@ -1,0 +1,33 @@
+{
+  "format": "snapshot-history/1",
+  "initial_state": [
+    {"key": 1, "value": 1, "version_id": "ia"}
+  ],
+  "commit_log": {
+    "first_commit_pos": 1,
+    "last_commit_pos": 2,
+    "complete": true,
+    "commits": [
+      {"txn_id": "T2", "commit_pos": 1, "writes": [
+        {"key": 15, "version_id": "v15", "predecessor": null, "value": 7}
+      ]},
+      {"txn_id": "T1", "commit_pos": 2, "writes": [
+        {"key": 1, "version_id": "a2", "predecessor": "ia", "value": 2}
+      ]}
+    ]
+  },
+  "transactions": [
+    {"txn_id": "T1", "status": "committed", "snapshot_pos": 0,
+     "start_time": 10, "end_time": 20,
+     "operations": [
+       {"seq": 0, "type": "range_read", "lo": 10, "hi": 20, "entries": [], "complete": true},
+       {"seq": 1, "type": "put", "key": 1, "value": 2}
+     ]},
+    {"txn_id": "T2", "status": "committed", "snapshot_pos": 0,
+     "start_time": 11, "end_time": 21,
+     "operations": [
+       {"seq": 0, "type": "point_read", "key": 1, "found": true, "value": 1, "version_id": "ia"},
+       {"seq": 1, "type": "put", "key": 15, "value": 7}
+     ]}
+  ]
+}

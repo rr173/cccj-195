@@ -1,0 +1,37 @@
+{
+  "format": "snapshot-history/1",
+  "initial_state": [
+    {"key": 1, "value": 0, "version_id": "ix"}
+  ],
+  "commit_log": {
+    "first_commit_pos": 1,
+    "last_commit_pos": 1,
+    "complete": true,
+    "commits": [
+      {"txn_id": "T1", "commit_pos": 1, "writes": [
+        {"key": 1, "version_id": "x1", "predecessor": "ix", "value": 1}
+      ]}
+    ]
+  },
+  "transactions": [
+    {"txn_id": "T1", "status": "committed", "snapshot_pos": 0,
+     "start_time": 1, "end_time": 2,
+     "operations": [
+       {"seq": 0, "type": "put", "key": 1, "value": 1}
+     ]},
+    {"txn_id": "Tx", "status": "aborted",
+     "writes": [
+       {"key": 2, "version_id": "bad1", "value": 99}
+     ]},
+    {"txn_id": "R1", "status": "committed", "snapshot_pos": 0,
+     "start_time": 10, "end_time": 20,
+     "operations": [
+       {"seq": 0, "type": "point_read", "key": 1, "found": true, "value": 1, "version_id": "x1"}
+     ]},
+    {"txn_id": "R2", "status": "committed", "snapshot_pos": 0,
+     "start_time": 10, "end_time": 20,
+     "operations": [
+       {"seq": 0, "type": "point_read", "key": 2, "found": true, "value": 99, "version_id": "bad1"}
+     ]}
+  ]
+}
