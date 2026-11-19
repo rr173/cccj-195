@@ -11,6 +11,10 @@
 `unknown` 及缺口清单，绝不把缺证据当作"无异常"；只有证据足够的确证违例才报
 `invalid`。
 
+另提供**观察依赖血缘**查询（`lineage` / `verify-lineage`）：给定原始历史与一
+个 `commit_pos`，重建该位置的键值并追溯每个结果版本的写入事务在写入前实际观
+察到的版本（见下文专节）。
+
 ## 运行
 
 ```bash
@@ -21,6 +25,15 @@ python3 -m snapshot_audit audit --input-dir /path/to/history_dir --out result.js
 # 独立核验见证（不信任审计器存的结论，从原始历史重新推导）
 python3 -m snapshot_audit verify-witness --input samples/write_skew.json \
     --witness result.json
+
+# 观察依赖血缘（退出码：0=complete 2=unknown/truncated 3=输入或用法错误）
+python3 -m snapshot_audit lineage --input samples/lineage_demo.json \
+    --commit-pos 3 --key 3 --out lin.json
+python3 -m snapshot_audit lineage --input samples/lineage_demo.json \
+    --commit-pos 2 --lo 1 --hi 9 --max-depth 8 --max-nodes 5000
+
+# 独立核验血缘（从原始历史重建目标状态与观察依赖图，不信任待核验 JSON）
+python3 -m snapshot_audit verify-lineage --lineage lin.json
 
 # 跨运行回归对比（两份独立原始历史，分别从原始数据重新审计）
 python3 -m snapshot_audit compare \
@@ -195,6 +208,90 @@ valid/unknown 状态转移、数据缺口变化、未映射事务、`ambiguous`�
 
 退出码：0=核验通过，1=核验失败，2=无可核验内容（如 unknown 结论）。
 
+## 观察依赖血缘（lineage / verify-lineage）
+
+`lineage` 回答"某个历史位置的值是怎么被观察出来的"：给定原始历史与
+`commit_pos`，先**按历史 commit_pos 重建目标状态**（点查一个键的当前值，或
+闭区间内全部非墓碑键值），再对每个结果版本递归追溯：哪个已提交事务写入了
+它、该事务在写操作之前实际读到了哪些版本、这些版本各自的上游观察依赖。
+
+**语义边界（重要）**：输入格式只记录"每个事务观察到了什么"，不记录计算表
+达式或输出列映射。因此写入事务在写操作前的**全部**读取都标为**事务级观察
+集合**——边"V 的写入者观察过 U"绝不表示 U 在业务因果上产生了 V。输出中
+`lineage_semantics` 恒为 `observation_dependency`。
+
+### 图模型
+
+* **节点** = 已提交版本（含初始值、墓碑），保留写入事务、写操作序号
+  （`write_op_seq`）、版本语义（`initial` / `committed_value` /
+  `tombstone`）与原件位置（`loc`）。
+* **边** = 写入事务在写操作前的读观察，按 `kind` 区分：
+  * `point_read`：点读（含 `found=false` 的缺失观察：`absent_tombstone`
+    指向当时可见的墓碑版本，`absent_no_version` 无目标节点）；
+  * `range_read_item`：范围读返回项；
+  * `range_predicate`：区间完备性谓词观察（"快照时该闭区间内只有这些活
+    键"），以及对区间内可见墓碑版本的逐项缺失观察。**范围查询中不存在
+    的键不生成值节点**：谓词观察只记录区间、快照点与返回键集，绝不伪造
+    一个读到的值；
+  * `own_write`：事务内先写后读（`intra_txn: true`）。这是事务内依赖，
+    在版本图上表现为指向同事务另一版本节点的边，**绝不形成事务级自环**。
+* 血缘**按版本和读取时的 `snapshot_pos` 展开**，不沿每键最新版本或当前依
+  赖图倒推。读操作记录了 `version_id` 的边指向实际读到的版本（即使是异常
+  读）；未记录版本 id 的读按读取时快照可见版本解析并标
+  `version_recorded: false`。
+* 递归路径去重（每个版本只展开一次）且输出稳定排序；同一上游版本被多个
+  操作观察时**各保留各的证据**（每条边带自己的读操作与位置）。异常读造
+  成的版本级环以稳定的 SCC 列表输出在 `cycles` 中，不无限递归；冲突证据
+  （如同一 commit 同键两写）标为 unknown 边界，不静默消解。
+
+### unknown 的局部化
+
+每个节点/边独立携带 `status`（`complete` / `unknown`）与缺口清单：缺失/冲
+突版本链、未声明完整的日志范围、未结束的范围扫描、缺失操作记录、无法归因
+的观察值、回滚/未提交版本观察等，只把**受影响**的节点/边标 unknown 并说明
+缺口；无关分支的缺口不污染可证明的独立结果（例如键 99 的版本链断裂不影响
+键 1 的完整血缘）。整体 `status` 只有在全部结果、节点、边均可证明且无截
+断时才是 `complete`。
+
+### 结果绑定、确定性与截断
+
+结果绑定：原始输入规范路径与内容 SHA-256（目录按排序逐文件摘要聚合）、查
+询位置、键/区间、格式版本（`observation-lineage/1`），并对签名载荷计算
+`lineage_sha256`。执行期间输入发生变化（完成后重哈希比对）时**拒绝给出成
+功结果**（退出码 3）。输出为确定性 JSON：节点按 id、边按稳定键、游标按
+（深度， 版本） 排序；精确的 RSS/耗时放在未签名的 `runtime_stats` 中。
+
+`--max-depth` / `--max-nodes` 限制展开深度与节点数。达到限制时
+`status="truncated"`，`truncation.cursor` 给出明确的恢复游标（版本 id、深
+度、原因），部分结果绝不标为完整。
+
+### 规模
+
+版本、事务操作与读观察全部在磁盘 SQLite 索引上（复用审计器的版本/操作索
+引，另有 `versions(txn_id, key)` 支持事务内先写后读解析），按 （深度， 版本
+id) 确定性最佳优先遍历**目标可达子图**：不做全历史读写对笛卡尔积，也不把
+所有节点载入内存（节点数受 `--max-nodes` 硬约束）。`stats` 报告实际的索
+引命中（`version_lookups`、`range_probes`、`range_keys_scanned`）、展开节
+点/边数、候选读操作检查数（`read_ops_examined`），`runtime_stats` 报告峰
+值 RSS 与耗时。
+
+### verify-lineage
+
+`verify-lineage` 从原始历史重新加载并重建目标状态与观察依赖图，逐项核对：
+输入哈希、查询范围、版本与读操作证据、节点/边、unknown 传播、排序、截断状
+态与结果签名——**不信任待核验 JSON 内的任何结论**。改动输入、移除一条依
+赖边、把 unknown 改成 complete、改变范围谓词证据、改动查询或打乱数组顺
+序，都会失败并指出不一致位置（如 `lineage.edges[3].status`、
+`input.sha256`）。退出码：0=核验通过，1=核验失败，3=无法加载。
+
+```bash
+python3 -m snapshot_audit lineage --input samples/lineage_demo.json \
+    --commit-pos 3 --key 3 --out lin.json
+python3 -m snapshot_audit verify-lineage --lineage lin.json
+# 也可用 --input/--input-dir 显式指定原始历史（默认取血缘中绑定的路径），
+# 用 --commit-pos/--key/--lo/--hi 断言待核验血缘回答的就是当前问题
+```
+
 ## 规模与内存
 
 * 版本、操作、边全部存于磁盘上的 SQLite（索引计划见审计输出 `index_plan`）；
@@ -216,6 +313,7 @@ valid/unknown 状态转移、数据缺口变化、未映射事务、`ambiguous`�
 | `valid_serial.json` | `valid`：实时对齐的写偏，带重放证书 |
 | `dirty_reads.json` | `invalid`：未来版本读 + 回滚版本读 |
 | `incomplete_log.json` | `unknown`：声明完整范围缺 commit_pos |
+| `lineage_demo.json` | `valid`；血缘演示：范围谓词、墓碑缺失观察、事务内先写后读 |
 
 ## 复现基准
 

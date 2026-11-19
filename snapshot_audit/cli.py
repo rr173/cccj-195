@@ -1,5 +1,5 @@
-"""Command line interface: ``audit``, ``verify-witness``, ``compare`` and
-``verify-diff``."""
+"""Command line interface: ``audit``, ``verify-witness``, ``compare``,
+``verify-diff``, ``lineage`` and ``verify-lineage``."""
 
 from __future__ import annotations
 
@@ -298,6 +298,85 @@ def cmd_verify_diff(args) -> int:
     return EXIT_VALID
 
 
+def _lineage_query(args) -> Dict[str, Any]:
+    from .lineage import build_query
+    return build_query(args.commit_pos, key=args.key, lo=args.lo, hi=args.hi)
+
+
+def cmd_lineage(args) -> int:
+    from .hashing import hash_input
+    from .lineage import run
+    try:
+        query = _lineage_query(args)
+    except ContractError as e:
+        print(f"lineage: query error: {e}", file=sys.stderr)
+        return EXIT_ERROR
+    path = args.input or args.input_dir
+    try:
+        info0 = hash_input(path)
+    except (OSError, ValueError) as e:
+        print(f"lineage: input error: {e}", file=sys.stderr)
+        return EXIT_ERROR
+    try:
+        store = _open_store(args)
+    except (ContractError, OSError, json.JSONDecodeError) as e:
+        print(f"lineage: input error: {e}", file=sys.stderr)
+        return EXIT_ERROR
+    try:
+        result = run(store, info0, query, max_depth=args.max_depth,
+                     max_nodes=args.max_nodes)
+    finally:
+        db_path = store.db_path
+        store.close()
+    # the raw history must not change while the lineage is computed:
+    # re-hash and refuse to emit a success result on any drift
+    try:
+        info1 = hash_input(path)
+    except (OSError, ValueError) as e:
+        print(f"lineage: input error: {e}", file=sys.stderr)
+        return EXIT_ERROR
+    if info1["sha256"] != info0["sha256"]:
+        print("lineage: input changed during execution; refusing to emit "
+              "a success result", file=sys.stderr)
+        return EXIT_ERROR
+    out = json.dumps(result, indent=2, ensure_ascii=False, sort_keys=False)
+    if args.out:
+        with open(args.out, "w", encoding="utf-8") as fh:
+            fh.write(out + "\n")
+    else:
+        print(out)
+    if args.keep_db:
+        print(f"lineage db kept at {db_path}", file=sys.stderr)
+    return EXIT_VALID if result["status"] == "complete" else EXIT_UNKNOWN
+
+
+def cmd_verify_lineage(args) -> int:
+    from .lineage import verify_lineage
+    try:
+        with open(args.lineage, "r", encoding="utf-8") as fh:
+            doc = json.load(fh)
+    except (OSError, json.JSONDecodeError) as e:
+        print(f"verify-lineage: cannot read lineage document: {e}",
+              file=sys.stderr)
+        return EXIT_ERROR
+    expect = None
+    if args.commit_pos is not None:
+        try:
+            expect = _lineage_query(args)
+        except ContractError as e:
+            print(f"verify-lineage: query error: {e}", file=sys.stderr)
+            return EXIT_ERROR
+    verification = verify_lineage(
+        doc, input_path=args.input, input_dir=args.input_dir,
+        expect_query=expect)
+    out = {"verified": verification.ok, "checked": verification.checked,
+           "problems": verification.problems}
+    print(json.dumps(out, indent=2, ensure_ascii=False))
+    if verification.ok:
+        return EXIT_VALID
+    return EXIT_ERROR if verification.fatal else EXIT_INVALID
+
+
 def main(argv: Optional[List[str]] = None) -> int:
     ap = argparse.ArgumentParser(
         prog="snapshot-audit",
@@ -375,6 +454,53 @@ def main(argv: Optional[List[str]] = None) -> int:
     p_vdiff.add_argument("--ledger", help="optional SQLite ledger to cross-check")
     p_vdiff.add_argument("--memory-budget-mb", type=int, default=512)
     p_vdiff.set_defaults(func=cmd_verify_diff)
+
+    def add_query(p) -> None:
+        p.add_argument("--commit-pos", type=int, required=True,
+                       help="historical position to reconstruct")
+        p.add_argument("--key", type=int,
+                       help="point query: current value of this key")
+        p.add_argument("--lo", type=int,
+                       help="range query: closed interval lower bound "
+                            "(needs --hi)")
+        p.add_argument("--hi", type=int,
+                       help="range query: closed interval upper bound "
+                            "(needs --lo)")
+
+    p_lin = sub.add_parser(
+        "lineage",
+        help="observation-dependency lineage (观察依赖血缘) of the value(s) "
+             "at a historical commit_pos")
+    add_input(p_lin)
+    add_query(p_lin)
+    p_lin.add_argument("--max-depth", type=int, default=64,
+                       help="max expansion depth from the result versions")
+    p_lin.add_argument("--max-nodes", type=int, default=8192,
+                       help="max version nodes materialized")
+    p_lin.add_argument("--work-dir", help="directory for the on-disk store")
+    p_lin.add_argument("--keep-db", action="store_true",
+                       help="keep the on-disk store after the run")
+    p_lin.add_argument("--out", help="write the lineage JSON here")
+    p_lin.set_defaults(func=cmd_lineage)
+
+    p_vlin = sub.add_parser(
+        "verify-lineage",
+        help="re-derive a lineage from the raw history and re-check it")
+    g = p_vlin.add_mutually_exclusive_group()
+    g.add_argument("--input", help="single-document history JSON "
+                                   "(default: the path bound in the lineage)")
+    g.add_argument("--input-dir", help="JSONL history directory")
+    p_vlin.add_argument("--lineage", required=True,
+                        help="lineage JSON produced by the lineage command")
+    p_vlin.add_argument("--commit-pos", type=int,
+                        help="assert the lineage answers this commit_pos")
+    p_vlin.add_argument("--key", type=int,
+                        help="assert the lineage answers this key")
+    p_vlin.add_argument("--lo", type=int,
+                        help="assert the lineage answers this interval lo")
+    p_vlin.add_argument("--hi", type=int,
+                        help="assert the lineage answers this interval hi")
+    p_vlin.set_defaults(func=cmd_verify_lineage)
 
     args = ap.parse_args(argv)
     return args.func(args)

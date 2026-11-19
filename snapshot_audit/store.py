@@ -33,6 +33,7 @@ CREATE TABLE versions(
 CREATE UNIQUE INDEX idx_versions_vid ON versions(version_id);
 CREATE INDEX idx_versions_key_pos ON versions(key, commit_pos);
 CREATE INDEX idx_versions_pos ON versions(commit_pos);
+CREATE INDEX idx_versions_txn_key ON versions(txn_id, key);
 
 CREATE TABLE aborted_versions(
   version_id TEXT PRIMARY KEY,
@@ -130,6 +131,11 @@ class Store:
         self.keep = keep
         self.stats = Stats()
         self.gaps: List[Gap] = []
+        # declared commit-log bounds (recorded at ingestion; lineage queries
+        # need them to reason about state reconstruction at a commit_pos)
+        self.log_first: Optional[int] = None
+        self.log_last: Optional[int] = None
+        self.log_complete: bool = False
 
     def close(self) -> None:
         self.db.close()
@@ -163,6 +169,9 @@ class Store:
         self.stats.add("initial_keys", len(rows))
 
     def _ingest_commits(self, header, commits) -> None:
+        self.log_first = header.log_first
+        self.log_last = header.log_last
+        self.log_complete = bool(header.log_complete)
         positions: List[int] = []
         vrows: List[tuple] = []
         commit_txn: List[Tuple[str, int, str]] = []
@@ -554,6 +563,38 @@ class Store:
         return self.db.execute(
             "SELECT 1 FROM broken_keys WHERE key BETWEEN ? AND ? LIMIT 1",
             (lo, hi)).fetchone() is not None
+
+    # -- lineage queries (on-demand probes over the disk indexes) -----------
+
+    def txn_row(self, txn_id: str):
+        """(status, snapshot_pos, ops_complete, commit_pos, loc) or None."""
+        self.stats.add("txn_lookups")
+        return self.db.execute(
+            "SELECT status, snapshot_pos, ops_complete, commit_pos, loc "
+            "FROM txns WHERE txn_id=?", (txn_id,)).fetchone()
+
+    def version_by_txn_key(self, txn_id: str, key: int):
+        """The committed version written by *txn_id* for *key* (or None)."""
+        self.stats.add("version_lookups")
+        return self.db.execute(
+            "SELECT key, commit_pos, version_id, txn_id, tombstone, value, loc "
+            "FROM versions WHERE txn_id=? AND key=?", (txn_id, key)).fetchone()
+
+    def txn_write_ops(self, txn_id: str, key: int) -> List[tuple]:
+        """(seq, type, value) of put/delete ops of *txn_id* on *key*."""
+        self.stats.add("op_lookups")
+        return self.db.execute(
+            "SELECT seq, type, value FROM ops WHERE txn_id=? AND key=? "
+            "AND type IN ('put','delete') ORDER BY seq", (txn_id, key)).fetchall()
+
+    def broken_key_set(self) -> set:
+        return {k for (k,) in self.db.execute("SELECT key FROM broken_keys")}
+
+    def duplicate_version_ids(self) -> set:
+        self.stats.add("version_lookups")
+        return {v for (v,) in self.db.execute(
+            "SELECT version_id FROM versions GROUP BY version_id "
+            "HAVING COUNT(*) > 1")}
 
     def index_plan(self) -> List[str]:
         return list(INDEX_PLAN)

@@ -1,0 +1,54 @@
+{
+  "format": "snapshot-history/1",
+  "initial_state": [
+    {"key": 1, "value": 0, "version_id": "i1"},
+    {"key": 2, "value": 0, "version_id": "i2"},
+    {"key": 5, "value": 5, "version_id": "i5"}
+  ],
+  "commit_log": {
+    "first_commit_pos": 1,
+    "last_commit_pos": 3,
+    "complete": true,
+    "commits": [
+      {"txn_id": "T1", "commit_pos": 1, "writes": [
+        {"key": 1, "version_id": "a1", "predecessor": "i1", "value": 10}
+      ]},
+      {"txn_id": "T2", "commit_pos": 2, "writes": [
+        {"key": 2, "version_id": "b2", "predecessor": "i2", "value": 20},
+        {"key": 5, "version_id": "d5", "predecessor": "i5", "tombstone": true}
+      ]},
+      {"txn_id": "T3", "commit_pos": 3, "writes": [
+        {"key": 3, "version_id": "c3", "predecessor": null, "value": 30}
+      ]}
+    ]
+  },
+  "transactions": [
+    {"txn_id": "T1", "status": "committed", "snapshot_pos": 0,
+     "start_time": 10, "end_time": 20,
+     "operations": [
+       {"seq": 0, "type": "range_read", "lo": 1, "hi": 9,
+        "entries": [{"key": 1, "value": 0, "version_id": "i1"},
+                    {"key": 2, "value": 0, "version_id": "i2"},
+                    {"key": 5, "value": 5, "version_id": "i5"}],
+        "complete": true},
+       {"seq": 1, "type": "put", "key": 1, "value": 10}
+     ]},
+    {"txn_id": "T2", "status": "committed", "snapshot_pos": 1,
+     "start_time": 30, "end_time": 40,
+     "operations": [
+       {"seq": 0, "type": "point_read", "key": 1, "found": true,
+        "value": 10, "version_id": "a1"},
+       {"seq": 1, "type": "put", "key": 2, "value": 20},
+       {"seq": 2, "type": "point_read", "key": 2, "found": true, "value": 20},
+       {"seq": 3, "type": "delete", "key": 5}
+     ]},
+    {"txn_id": "T3", "status": "committed", "snapshot_pos": 2,
+     "start_time": 50, "end_time": 60,
+     "operations": [
+       {"seq": 0, "type": "point_read", "key": 2, "found": true,
+        "value": 20, "version_id": "b2"},
+       {"seq": 1, "type": "point_read", "key": 5, "found": false},
+       {"seq": 2, "type": "put", "key": 3, "value": 30}
+     ]}
+  ]
+}
