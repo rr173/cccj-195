@@ -22,6 +22,20 @@ python3 -m snapshot_audit audit --input-dir /path/to/history_dir --out result.js
 python3 -m snapshot_audit verify-witness --input samples/write_skew.json \
     --witness result.json
 
+# 跨运行回归对比（两份独立原始历史，分别从原始数据重新审计）
+python3 -m snapshot_audit compare \
+    --baseline-input old.json   --baseline-run-id run-2026-10 \
+    --candidate-input new.json  --candidate-run-id run-2026-11 \
+    --mapping rename.json \
+    --manifest-out manifest.json --out regression.json --ledger ledger.db
+#   退出码：0=无回归/改善 1=回归 2=unknown（证据不足/歧义） 3=输入或用法错误
+
+# 独立核验回归报告（重新审计、重建规范化 finding、重跑映射与匹配）
+python3 -m snapshot_audit verify-diff --manifest manifest.json \
+    --report regression.json --ledger ledger.db \
+    --baseline-input old.json --candidate-input new.json \
+    --mapping rename.json
+
 # 测试
 python3 -m unittest discover -s tests -t .
 
@@ -29,6 +43,65 @@ python3 -m unittest discover -s tests -t .
 python3 bench/run_bench.py            # 完整集，写入 bench/BENCH.md
 python3 bench/run_bench.py --quick    # 最小集
 ```
+
+## 跨运行回归对比（compare / verify-diff）
+
+面向数据仓库在两个采集时点产生的**两份独立历史**。两侧都从原始历史重新
+审计，绝不读取旧的 `result.json` 作为事实，也不修改任一原始历史。
+
+### 比较清单（manifest）
+
+`compare` 先生成并自签名一份比较清单，固定：两份输入的规范化绝对路径、
+`run_id`、内容 SHA-256（目录按排序后的逐文件摘要聚合）、身份映射文件的
+SHA-256、审计配置和生成器版本。运行期间输入或映射发生变化、两侧 `run_id`
+重复、映射一对多/多对一、映射引用不存在的事务、提交范围或记录不完整时，
+拒绝产出正常回归结论（硬错误退出码 3，或带可定位原因的 `unknown`），绝不把
+“无变化”当作成功。
+
+### 事务身份
+
+* 同名事务默认按 `txn_id` 隐式对齐；
+* 事务被重命名时**只能**通过显式的一对一映射对齐（映射文件为
+  `{"mappings":[{"baseline_txn_id":...,"candidate_txn_id":...}]}` 或同等
+  列表）；未映射事务仍进入新增/消失统计；
+* 规范化事务 id：映射对统一收敛到 baseline id，同名收敛到裸 id，单侧私有
+  id 带侧前缀，永不碰撞。
+
+### 规范化 finding 身份
+
+身份不依赖文件行号、`commit_pos`、SQLite 自增主键或 `version_id` 是否重新
+编号：
+
+* 读异常：事务身份 + 操作序号 + 异常类别 + 键或闭区间 + 观察/期望的**语义
+  值**；
+* 依赖环：事务边 + 边类型 + 键/区间 + 前后继写语义，并对环做**规范化旋转**，
+  同一环从不同节点开始身份相同；同一节点环存在多个合法见证（不同边类型/
+  键的组合）时枚举全部见证，无法唯一对应记为 `ambiguous`；
+* `version_id` 和原件位置只作为**证据**，单独变化只会置 `evidence_changed`
+  标志，绝不单独造成新故障；
+* 同一事务/操作/键发生语义冲突记 `identity_conflict`，不会被错误归为持续或
+  已解决；
+* unknown 缺口按稳定的缺口类别 + 事务/操作范围 + 证据语义比较，证据缺失绝不
+  降级成 `valid`/`resolved`。
+
+### 报告与 SQLite 账本
+
+确定性 JSON 报告 + 事务写入、分批落盘的 SQLite 账本，至少包含：每侧审计摘要
+与输入哈希；新增 invalid、消失/解决 invalid、持续 invalid、finding 证据改变、
+valid/unknown 状态转移、数据缺口变化、未映射事务、`ambiguous`、
+`identity_conflict`。每行保留两侧规范化身份、原始证据位置、变化原因和可追溯
+`run_id`。结果按稳定键排序，重复运行**字节级一致**（仅操作侧的精确 RSS/耗时
+放在未签名的 `runtime_stats`）。匹配走身份哈希索引，不做无索引笛卡尔积；
+统计真实的 `index_hits`、`candidate_comparisons`、`rows_written`、峰值 RSS
+与耗时。
+
+### verify-diff
+
+接收比较清单、回归报告和两份原始历史，重新审计、重建规范化 finding、重跑
+身份映射与匹配，再逐项核对报告签名/哈希、分类、计数、证据位置与排序，并独立
+确认每条“解决”只有在 candidate 证据完整且对应 finding 确实不再出现时才成立。
+报告、映射或输入被改动一字、删除一条 ambiguous/identity_conflict 记录都会失败
+并指出不一致位置。退出码：0=核验通过，1=核验失败，3=无法加载。
 
 ## 输入合同
 

@@ -1,4 +1,5 @@
-"""Command line interface: ``audit`` and ``verify-witness``."""
+"""Command line interface: ``audit``, ``verify-witness``, ``compare`` and
+``verify-diff``."""
 
 from __future__ import annotations
 
@@ -23,6 +24,8 @@ EXIT_VALID = 0
 EXIT_INVALID = 1
 EXIT_UNKNOWN = 2
 EXIT_ERROR = 3
+# compare-specific exit codes reuse the same numeric convention:
+# 0 no regression / improved, 1 regression, 2 unknown, 3 usage/input error
 
 
 def _rss_bytes() -> int:
@@ -225,6 +228,76 @@ def cmd_verify_witness(args) -> int:
     return EXIT_VALID if not problems else EXIT_INVALID
 
 
+def _input_path(args, prefix: str) -> Optional[str]:
+    single = getattr(args, f"{prefix}_input", None)
+    directory = getattr(args, f"{prefix}_input_dir", None)
+    return single or directory
+
+
+def cmd_compare(args) -> int:
+    from .compare import run_comparison, write_ledger
+    from .manifest import ManifestError, build_manifest, load_mapping
+    b_path, c_path = _input_path(args, "baseline"), _input_path(args, "candidate")
+    if not b_path or not c_path:
+        print("compare: both --baseline-input/--baseline-input-dir and "
+              "--candidate-input/--candidate-input-dir are required",
+              file=sys.stderr)
+        return EXIT_ERROR
+    try:
+        mapping = load_mapping(args.mapping)
+        audit_config = {"memory_budget_mb": args.memory_budget_mb,
+                        "tool": f"snapshot_audit/{__version__}"}
+        manifest = build_manifest(
+            b_path, args.baseline_run_id, c_path, args.candidate_run_id,
+            mapping, audit_config)
+    except (ManifestError, OSError) as e:
+        print(f"compare: manifest error: {e}", file=sys.stderr)
+        return EXIT_ERROR
+    try:
+        report = run_comparison(manifest, mapping,
+                                memory_budget_mb=args.memory_budget_mb)
+    except (ContractError, OSError, json.JSONDecodeError, ManifestError) as e:
+        print(f"compare: input error: {e}", file=sys.stderr)
+        return EXIT_ERROR
+    out = json.dumps(report, indent=2, ensure_ascii=False, sort_keys=False)
+    if args.out:
+        with open(args.out, "w", encoding="utf-8") as fh:
+            fh.write(out + "\n")
+    else:
+        print(out)
+    if args.manifest_out:
+        with open(args.manifest_out, "w", encoding="utf-8") as fh:
+            fh.write(json.dumps(manifest, indent=2, ensure_ascii=False) + "\n")
+    if args.ledger:
+        ledger = write_ledger(args.ledger, report, report["stats"])
+        ledger.close()
+        print(f"compare: ledger written to {args.ledger}", file=sys.stderr)
+    return {"no_regression": EXIT_VALID, "improved": EXIT_VALID,
+            "regression": EXIT_INVALID, "unknown": EXIT_UNKNOWN}[
+        report["status"]]
+
+
+def cmd_verify_diff(args) -> int:
+    from .verify_diff import verify_diff
+    try:
+        verification = verify_diff(
+            args.manifest, args.report,
+            baseline_override=args.baseline_input or args.baseline_input_dir,
+            candidate_override=args.candidate_input or args.candidate_input_dir,
+            mapping_override=args.mapping,
+            ledger_path=args.ledger,
+            memory_budget_mb=args.memory_budget_mb)
+    except (OSError, json.JSONDecodeError) as e:
+        print(f"verify-diff: error: {e}", file=sys.stderr)
+        return EXIT_ERROR
+    out = {"verified": verification.ok, "checked": verification.checked,
+           "problems": verification.problems}
+    print(json.dumps(out, indent=2, ensure_ascii=False))
+    if not verification.ok:
+        return EXIT_INVALID
+    return EXIT_VALID
+
+
 def main(argv: Optional[List[str]] = None) -> int:
     ap = argparse.ArgumentParser(
         prog="snapshot-audit",
@@ -262,6 +335,46 @@ def main(argv: Optional[List[str]] = None) -> int:
                           help="audit result JSON or bare witness JSON")
     p_verify.add_argument("--work-dir", help="directory for the on-disk store")
     p_verify.set_defaults(func=cmd_verify_witness)
+
+    def add_side_input(p, prefix: str, label: str) -> None:
+        g = p.add_mutually_exclusive_group(required=True)
+        g.add_argument(f"--{prefix}-input",
+                       help=f"{label} single-document history JSON")
+        g.add_argument(f"--{prefix}-input-dir",
+                       help=f"{label} JSONL history directory")
+
+    p_compare = sub.add_parser(
+        "compare",
+        help="cross-run regression comparison of two independent raw histories")
+    add_side_input(p_compare, "baseline", "baseline")
+    add_side_input(p_compare, "candidate", "candidate")
+    p_compare.add_argument("--baseline-run-id", required=True)
+    p_compare.add_argument("--candidate-run-id", required=True)
+    p_compare.add_argument(
+        "--mapping",
+        help="optional explicit one-to-one txn identity mapping JSON "
+             "(list of {baseline_txn_id, candidate_txn_id})")
+    p_compare.add_argument("--out", help="write the regression report JSON here")
+    p_compare.add_argument("--manifest-out",
+                           help="write the comparison manifest JSON here")
+    p_compare.add_argument("--ledger", help="write the SQLite ledger here")
+    p_compare.add_argument("--memory-budget-mb", type=int, default=512)
+    p_compare.set_defaults(func=cmd_compare)
+
+    p_vdiff = sub.add_parser(
+        "verify-diff",
+        help="re-audit raw histories and re-verify a regression report")
+    p_vdiff.add_argument("--manifest", required=True,
+                         help="comparison manifest produced by compare")
+    p_vdiff.add_argument("--report", required=True,
+                         help="regression report produced by compare")
+    add_side_input(p_vdiff, "baseline", "baseline")
+    add_side_input(p_vdiff, "candidate", "candidate")
+    p_vdiff.add_argument("--mapping",
+                         help="mapping file (must match the manifest digest)")
+    p_vdiff.add_argument("--ledger", help="optional SQLite ledger to cross-check")
+    p_vdiff.add_argument("--memory-budget-mb", type=int, default=512)
+    p_vdiff.set_defaults(func=cmd_verify_diff)
 
     args = ap.parse_args(argv)
     return args.func(args)
