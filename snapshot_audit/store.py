@@ -344,7 +344,8 @@ class Store:
                     seen_ekeys.add(ek)
                     ev = canon_scalar(e.get("value"), eloc)
                     canon_entries.append({"key": ek, "value": ev,
-                                          "version_id": e.get("version_id")})
+                                          "version_id": e.get("version_id"),
+                                          "tombstone": bool(e.get("tombstone"))})
                 entries = json.dumps(canon_entries, sort_keys=True)
             if typ == OP_POINT_READ:
                 f = op.get("found")

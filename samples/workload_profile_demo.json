@@ -1,0 +1,81 @@
+{
+  "format": "snapshot-history/1",
+  "initial_state": [
+    {"key": 1, "value": 0, "version_id": "i1"},
+    {"key": 2, "value": 0, "version_id": "i2"},
+    {"key": 7, "value": 5, "version_id": "i7"}
+  ],
+  "commit_log": {
+    "first_commit_pos": 1,
+    "last_commit_pos": 4,
+    "complete": true,
+    "commits": [
+      {"txn_id": "T1", "commit_pos": 1, "writes": [
+        {"key": 1, "version_id": "v1", "predecessor": "i1", "value": 10}
+      ]},
+      {"txn_id": "T2", "commit_pos": 2, "writes": [
+        {"key": 2, "version_id": "v2", "predecessor": "i2", "value": 20}
+      ]},
+      {"txn_id": "T4", "commit_pos": 3, "writes": [
+        {"key": 7, "version_id": "v7", "predecessor": "i7", "tombstone": true}
+      ]},
+      {"txn_id": "T5", "commit_pos": 4, "writes": [
+        {"key": 1, "version_id": "v1b", "predecessor": "v1", "value": 11}
+      ]}
+    ]
+  },
+  "transactions": [
+    {"txn_id": "T1", "status": "committed", "snapshot_pos": 0,
+     "start_time": 0, "end_time": 10,
+     "operations": [
+       {"seq": 0, "type": "point_read", "key": 2, "found": true,
+        "value": 0, "version_id": "i2"},
+       {"seq": 1, "type": "range_read", "lo": 1, "hi": 5,
+        "entries": [
+          {"key": 1, "value": 0, "version_id": "i1"},
+          {"key": 2, "value": 0, "version_id": "i2"}
+        ], "complete": true},
+       {"seq": 2, "type": "put", "key": 1, "value": 10}
+     ]},
+    {"txn_id": "T2", "status": "committed", "snapshot_pos": 1,
+     "start_time": 12, "end_time": 20,
+     "operations": [
+       {"seq": 0, "type": "range_read", "lo": 1, "hi": 9,
+        "entries": [
+          {"key": 1, "value": 10, "version_id": "v1"},
+          {"key": 2, "value": 0, "version_id": "i2"},
+          {"key": 7, "value": 5, "version_id": "i7"}
+        ], "complete": true},
+       {"seq": 1, "type": "put", "key": 2, "value": 20}
+     ]},
+    {"txn_id": "T3", "status": "committed", "snapshot_pos": 2,
+     "start_time": 21, "end_time": 25,
+     "operations": [
+       {"seq": 0, "type": "point_read", "key": 1, "found": true,
+        "value": 10, "version_id": "v1"},
+       {"seq": 1, "type": "range_read", "lo": 100, "hi": 200,
+        "entries": [], "complete": true}
+     ]},
+    {"txn_id": "T4", "status": "committed", "snapshot_pos": 2,
+     "start_time": 26, "end_time": 30,
+     "operations": [
+       {"seq": 0, "type": "point_read", "key": 7, "found": true,
+        "value": 5, "version_id": "i7"},
+       {"seq": 1, "type": "delete", "key": 7}
+     ]},
+    {"txn_id": "T5", "status": "committed", "snapshot_pos": 3,
+     "start_time": 31, "end_time": 40,
+     "operations": [
+       {"seq": 0, "type": "point_read", "key": 7, "found": false},
+       {"seq": 1, "type": "put", "key": 1, "value": 11}
+     ]},
+    {"txn_id": "A9", "status": "aborted", "snapshot_pos": 0,
+     "start_time": 5, "end_time": 8,
+     "operations": [
+       {"seq": 0, "type": "put", "key": 99, "value": 999}
+     ],
+     "writes": [
+       {"key": 99, "version_id": "bad99", "value": 999}
+     ]}
+  ]
+}

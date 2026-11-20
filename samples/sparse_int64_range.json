@@ -1,0 +1,22 @@
+{
+  "format": "snapshot-history/1",
+  "initial_state": [],
+  "commit_log": {
+    "first_commit_pos": null,
+    "last_commit_pos": null,
+    "complete": true,
+    "commits": []
+  },
+  "transactions": [
+    {"txn_id": "S1", "status": "committed", "snapshot_pos": 0,
+     "start_time": 0, "end_time": 10,
+     "operations": [
+       {"seq": 0, "type": "range_read", "lo": -9223372036854775808,
+        "hi": 9223372036854775807, "entries": [], "complete": true},
+       {"seq": 1, "type": "range_read", "lo": -5, "hi": 5,
+        "entries": [], "complete": true},
+       {"seq": 2, "type": "range_read", "lo": 5, "hi": 9223372036854775807,
+        "entries": [], "complete": true}
+     ]}
+  ]
+}

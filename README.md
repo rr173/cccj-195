@@ -15,6 +15,10 @@
 个 `commit_pos`，重建该位置的键值并追溯每个结果版本的写入事务在写入前实际观
 察到的版本（见下文专节）。
 
+还提供**事务负载画像**（`profile` / `verify-profile`）：从单次采集历史直接回
+答"哪个时间段最忙""哪些实际键被频繁读取或更新""哪些闭区间被反复扫描"，
+按固定时间窗、逐键热度与区间覆盖热度给出确定性 JSON（见下文专节）。
+
 ## 运行
 
 ```bash
@@ -34,6 +38,12 @@ python3 -m snapshot_audit lineage --input samples/lineage_demo.json \
 
 # 独立核验血缘（从原始历史重建目标状态与观察依赖图，不信任待核验 JSON）
 python3 -m snapshot_audit verify-lineage --lineage lin.json
+
+# 事务负载画像（退出码：0=complete 2=存在 unknown 缺口 3=输入或用法错误）
+python3 -m snapshot_audit profile --input samples/workload_profile_demo.json \
+    --window-width 10 --top-n 10 --out profile.json
+# 独立核验画像（从原始事务记录重算窗口/分类/排名/分段/unknown 传播）
+python3 -m snapshot_audit verify-profile --profile profile.json
 
 # 跨运行回归对比（两份独立原始历史，分别从原始数据重新审计）
 python3 -m snapshot_audit compare \
@@ -292,6 +302,70 @@ python3 -m snapshot_audit verify-lineage --lineage lin.json
 # 用 --commit-pos/--key/--lo/--hi 断言待核验血缘回答的就是当前问题
 ```
 
+## 事务负载画像（profile / verify-profile）
+
+`profile` 是只读的负载分析，不判断读是否合法，也不统计错误数或血缘节点数——
+那些是别的工具的指标，绝不换名充当负载。它从**单次采集的原始事务记录**回答
+值班问题：什么时间段最忙、哪些实际键被频繁读取或更新、哪些闭区间被反复扫描。
+
+### 时间窗
+
+* 零点 = 所有**成功提交事务**中最早的 `end_time`；事务按其 `end_time` 到达
+  归入固定宽度桶 `floor((end_time - anchor) / width)`，恰落在边界上的到达按
+  有限精度规则吸附到最近桶（`boundary_snap_epsilon`）；
+* 只统计 `committed` 事务，`aborted` 事务完全不参与（计数、热度、覆盖都不
+  含）；
+* 每个窗口列出：事务数与事务 id、操作总量、点读/范围读/写入三类计数，以及
+  可解释的事务耗时汇总（`sum/min/max/mean` + 已解释与无法解释的事务）；
+* **零事务窗口是已知的零（`complete`），与无法得知负载的窗口严格区分**：
+  缺日志、操作证据冲突、扫描未结束等只把受影响窗口/指标标为 `unknown` 并附
+  缺口清单，绝不当作零。无法归属窗口的事务（如缺 `end_time`）进
+  `unbinned_transactions`，不静默丢弃。
+
+### 两种含义不同的热度
+
+1. **逐键事件热度 `key_heat`**：点读对目标键计一次；每个 `put`/`delete` 的写
+   入键各计一次；范围读只把**已完成扫描完整返回的非墓碑键**计入逐键排名。
+   top-N 按总事件数降序、键升序稳定排序（并列顺序确定）。
+2. **范围扫描覆盖热度 `scan_coverage`**：一次完整扫描对其整个**闭区间**贡献
+   一次覆盖，**即使返回零行也计数**；键域表示成互不重叠的分段，相邻且覆盖
+   次数相同的分段合并。逐键返回数与扫描覆盖数是两种不同的量，分开报告。
+
+### 区间合并的取舍与 oracle
+
+生产实现把每个闭区间写成两个端点事件（`lo` 起点、`hi` 终点，终点在同坐标
+的起点之后处理，精确保留闭端点）写入 SQLite，再按坐标顺序聚合成段——等价于
+端点事件外部排序后扫描。**绝不按区间宽度生成逐键记录**：成本随区间/端点数
+增长，不随键域宽度增长。测试里的独立 oracle（`tests/profile_oracle.py`）才
+使用在有限小域上逐键枚举覆盖次数再合并等值相邻键的暴力法，并与生产实现逐项
+交叉核对；生产代码不含该枚举法。`samples/sparse_int64_range.json` 用横跨整个
+int64 的稀疏区间证明只有 6 个端点事件、4 个分段（见 `bench/PROFILE_BENCH.md`
+的 `sparse-int64` 行）。
+
+### 绑定、确定性、unknown 传播与核验
+
+画像绑定输入规范路径、内容 SHA-256（目录按排序逐文件摘要聚合）、窗口参数与
+格式版本（`workload-profile/1`），并对签名载荷计算 `profile_sha256`；重复运行
+字节级一致，精确 RSS/耗时放在未签名的 `runtime_stats`。生成期间输入发生变化
+（结束后重哈希不一致）时拒绝产出成功结果（退出码 3）。
+
+`verify-profile` 从原始数据**独立重建**窗口归属、逐类计数、热度排名、覆盖分
+段、unknown 传播与摘要，不以画像自带结论或其签名代替复算；再逐项 diff 签名
+载荷。篡改任一计数、把事务移入相邻桶、删去覆盖分段、把 `unknown` 改成
+`complete`、修改源文件或仅改签名都会失败并指出字段/位置（如
+`windows[0].transaction_count`、`scan_coverage.segments`、`input.sha256`）。
+资源测量字段按明确规则核验：峰值 RSS 允许 2 倍容差，墙钟时间仅校验存在与类
+型、环境相关不作为硬失败。退出码：0=核验通过，1=核验失败，3=无法加载。
+
+### 规模与内存
+
+逐键热度在有界的内存计数器里聚合，超过上限才把**已聚合**的计数批量落盘
+SQLite（不是每事件一行）；端点事件、事务-桶归属、已提交 id 集合都在磁盘表
+上，操作按有序游标分批流式读取。`stats` 报告输入记录数、热度事件数、扫描区
+间数、端点处理量、生成分段数与不同热度键数，`runtime_stats` 报告峰值 RSS 与
+耗时。基准：`python3 bench/run_profile_bench.py`（`--quick` 跑最小集，结果写
+`bench/PROFILE_BENCH.md`）。
+
 ## 规模与内存
 
 * 版本、操作、边全部存于磁盘上的 SQLite（索引计划见审计输出 `index_plan`）；
@@ -314,6 +388,8 @@ python3 -m snapshot_audit verify-lineage --lineage lin.json
 | `dirty_reads.json` | `invalid`：未来版本读 + 回滚版本读 |
 | `incomplete_log.json` | `unknown`：声明完整范围缺 commit_pos |
 | `lineage_demo.json` | `valid`；血缘演示：范围谓词、墓碑缺失观察、事务内先写后读 |
+| `workload_profile_demo.json` | 负载画像样例：跨窗口桶、空结果扫描、墓碑、回滚事务排除、覆盖分段合并 |
+| `sparse_int64_range.json` | 画像稀疏区间样例：横跨整个 int64 的闭区间只产生 2 个端点事件 |
 
 ## 复现基准
 
@@ -324,4 +400,5 @@ python3 -m snapshot_audit audit --input-dir /tmp/h --out /tmp/h.result.json
 python3 -m snapshot_audit verify-witness --input-dir /tmp/h \
     --witness /tmp/h.result.json
 python3 bench/run_bench.py   # 汇总表写入 bench/BENCH.md
+python3 bench/run_profile_bench.py   # 负载画像规模/资源表写入 bench/PROFILE_BENCH.md
 ```

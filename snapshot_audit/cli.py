@@ -1,5 +1,6 @@
 """Command line interface: ``audit``, ``verify-witness``, ``compare``,
-``verify-diff``, ``lineage`` and ``verify-lineage``."""
+``verify-diff``, ``lineage``, ``verify-lineage``, ``profile`` and
+``verify-profile``."""
 
 from __future__ import annotations
 
@@ -11,6 +12,7 @@ import time
 from typing import Any, Dict, List, Optional
 
 from . import __version__
+from . import hashing
 from .graph import analyze_graph, build_edges
 from .model import ContractError, load_history
 from .reads import verify_reads
@@ -377,6 +379,71 @@ def cmd_verify_lineage(args) -> int:
     return EXIT_ERROR if verification.fatal else EXIT_INVALID
 
 
+def cmd_profile(args) -> int:
+    from .profile import ProfileError, run, validate_top_n, validate_window_width
+    path = args.input or args.input_dir
+    try:
+        width = validate_window_width(args.window_width)
+        top_n = validate_top_n(args.top_n)
+    except ProfileError as e:
+        print(f"profile: {e}", file=sys.stderr)
+        return EXIT_ERROR
+    try:
+        info0 = hashing.hash_input(path)
+    except (OSError, ValueError) as e:
+        print(f"profile: input error: {e}", file=sys.stderr)
+        return EXIT_ERROR
+    try:
+        store = _open_store(args)
+    except (ContractError, OSError, json.JSONDecodeError) as e:
+        print(f"profile: input error: {e}", file=sys.stderr)
+        return EXIT_ERROR
+    try:
+        result = run(store, info0, width, top_n)
+    finally:
+        db_path = store.db_path
+        store.close()
+    # the raw history must not change while the profile is computed: re-hash
+    # through the module binding and refuse on any drift
+    try:
+        info1 = hashing.hash_input(path)
+    except (OSError, ValueError) as e:
+        print(f"profile: input error: {e}", file=sys.stderr)
+        return EXIT_ERROR
+    if info1["sha256"] != info0["sha256"]:
+        print("profile: input changed during execution; refusing to emit "
+              "a success result", file=sys.stderr)
+        return EXIT_ERROR
+    out = json.dumps(result, indent=2, ensure_ascii=False, sort_keys=False)
+    if args.out:
+        with open(args.out, "w", encoding="utf-8") as fh:
+            fh.write(out + "\n")
+    else:
+        print(out)
+    if args.keep_db:
+        print(f"profile db kept at {db_path}", file=sys.stderr)
+    return EXIT_VALID if result["status"] == "complete" else EXIT_UNKNOWN
+
+
+def cmd_verify_profile(args) -> int:
+    from .profile import verify_profile
+    try:
+        with open(args.profile, "r", encoding="utf-8") as fh:
+            doc = json.load(fh)
+    except (OSError, json.JSONDecodeError) as e:
+        print(f"verify-profile: cannot read profile document: {e}",
+              file=sys.stderr)
+        return EXIT_ERROR
+    verification = verify_profile(
+        doc, input_path=args.input, input_dir=args.input_dir)
+    out = {"verified": verification.ok, "checked": verification.checked,
+           "problems": verification.problems}
+    print(json.dumps(out, indent=2, ensure_ascii=False))
+    if verification.ok:
+        return EXIT_VALID
+    return EXIT_ERROR if verification.fatal else EXIT_INVALID
+
+
 def main(argv: Optional[List[str]] = None) -> int:
     ap = argparse.ArgumentParser(
         prog="snapshot-audit",
@@ -501,6 +568,34 @@ def main(argv: Optional[List[str]] = None) -> int:
     p_vlin.add_argument("--hi", type=int,
                         help="assert the lineage answers this interval hi")
     p_vlin.set_defaults(func=cmd_verify_lineage)
+
+    p_prof = sub.add_parser(
+        "profile",
+        help="deterministic workload profile (事务负载画像) over time "
+             "windows, per-key heat and range-scan coverage")
+    add_input(p_prof)
+    p_prof.add_argument("--window-width", type=float, required=True,
+                        help="positive fixed window width in the history's "
+                             "time units; windows start at the earliest "
+                             "committed end_time")
+    p_prof.add_argument("--top-n", type=int, default=20,
+                        help="number of hottest keys to rank (positive int)")
+    p_prof.add_argument("--work-dir", help="directory for the on-disk store")
+    p_prof.add_argument("--keep-db", action="store_true",
+                        help="keep the on-disk store after the run")
+    p_prof.add_argument("--out", help="write the profile JSON here")
+    p_prof.set_defaults(func=cmd_profile)
+
+    p_vprof = sub.add_parser(
+        "verify-profile",
+        help="re-derive a workload profile from the raw history and re-check it")
+    g = p_vprof.add_mutually_exclusive_group()
+    g.add_argument("--input", help="single-document history JSON "
+                                   "(default: the path bound in the profile)")
+    g.add_argument("--input-dir", help="JSONL history directory")
+    p_vprof.add_argument("--profile", required=True,
+                         help="profile JSON produced by the profile command")
+    p_vprof.set_defaults(func=cmd_verify_profile)
 
     args = ap.parse_args(argv)
     return args.func(args)
